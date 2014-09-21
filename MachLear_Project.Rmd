@@ -1,0 +1,125 @@
+Predicting the quality of executing an activity
+========================================================
+
+## Synopsis
+
+This report aims to predict how well (quality) an activity was perfomed by the wearer from the Weight Lifting Exercises dataset which has been provided in order to be analyzed. The "how (well)" investigation has only received little attention so far, even though it potentially provides useful information for a large variety of applications, such as sports training. In order to fulfil our objetcive, six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E). This report proposes the best model to predict any of these classes on the test dataset.
+
+## Data Processing
+
+First of all, we need to read the download data and explore it in order to understand the data:
+
+```{r}
+getwd()
+training <- read.csv("C:/Users/Sistema/Documents/pml-training.csv")
+testing <- read.csv("C:/Users/Sistema/Documents/pml-testing.csv")
+dim(training); dim(testing)
+```
+
+If we used str and summary commands, we would see that both datasets have the same name and number of variables with the unique difference in the last variable. For training dataset, the last variable is called "classe" which we will predict later, while in testing dataset the last variable is "problem_id" which will be useful for submission assignment. On the other hand, given that we will predict the class on testing dataset, it is important to take into account the variables from testing dataset because these will help us to build our model on training dataset, in other words, what would happen if one variable on testing dataset contains only NULL values; however, this same variable is full of numbers or categories on the training dataset and it was used to construct our model? Probably, we might get some error because of NULL values on testing dataset. For this reason, we will remove those variables from the testing dataset that contains only NULL values:
+
+```{r}
+testing <- testing[ ,colSums(is.na(testing)) == 0]
+dim(testing)
+```
+
+As it can be clearly seen, only 60 out of 160 variables contain filled values and many of these variables plus class variable will be remained on training dataset in order to build our model:
+
+```{r}
+training <- training[ ,c("roll_belt","pitch_belt","yaw_belt","total_accel_belt","gyros_belt_x","gyros_belt_y","gyros_belt_z","accel_belt_x","accel_belt_y","accel_belt_z","magnet_belt_x","magnet_belt_y","magnet_belt_z","roll_arm","pitch_arm","yaw_arm","total_accel_arm","gyros_arm_x","gyros_arm_y","gyros_arm_z","accel_arm_x","accel_arm_y","accel_arm_z","magnet_arm_x","magnet_arm_y","magnet_arm_z","roll_dumbbell","pitch_dumbbell","yaw_dumbbell","total_accel_dumbbell","gyros_dumbbell_x","gyros_dumbbell_y","gyros_dumbbell_z","accel_dumbbell_x","accel_dumbbell_y","accel_dumbbell_z","magnet_dumbbell_x","magnet_dumbbell_y","magnet_dumbbell_z","roll_forearm","pitch_forearm","yaw_forearm","total_accel_forearm","gyros_forearm_x","gyros_forearm_y","gyros_forearm_z","accel_forearm_x","accel_forearm_y","accel_forearm_z","magnet_forearm_x","magnet_forearm_y","magnet_forearm_z","classe")]
+dim(training)
+```
+
+Our new training dataset has now 53 variables. Nevertheless, not all variables should be used in our model given that many correlations might appear on this dataset. So, we identify these correlations on numeric variables:
+
+```{r, results='hide'}
+cor(training[1:52])
+```
+
+This matrix allows us to identify high correlations. In this report, we will remove those variables with correlations equal or greater than 0.9. In total there are 12 variables which we ommit. Hence, our new and final training dataset will remain the next variables:
+
+```{r}
+training <- training[ ,c("yaw_belt","gyros_belt_x","gyros_belt_y","gyros_belt_z","magnet_belt_y","magnet_belt_z","roll_arm","pitch_arm","yaw_arm","total_accel_arm","gyros_arm_z","accel_arm_x","accel_arm_y","accel_arm_z","magnet_arm_x","magnet_arm_y","magnet_arm_z","roll_dumbbell","pitch_dumbbell","yaw_dumbbell","total_accel_dumbbell","gyros_dumbbell_y","accel_dumbbell_x","accel_dumbbell_y","accel_dumbbell_z","magnet_dumbbell_x","magnet_dumbbell_y","magnet_dumbbell_z","roll_forearm","pitch_forearm","yaw_forearm","total_accel_forearm","gyros_forearm_x","gyros_forearm_y","accel_forearm_x","accel_forearm_y","accel_forearm_z","magnet_forearm_x","magnet_forearm_y","magnet_forearm_z","classe")]
+dim(training)
+```
+
+This training dataset has 41 variables and they will be used to perform our models which will predict the quality of an activity.
+
+## Modelling
+
+First of all, we must load some libraries and split our training dataset in train and test subdatasets in a ratio of 60% for train and 40% for test:
+
+```{r}
+library(caret)
+library(randomForest)
+library(rpart)
+set.seed(5)
+inTrain  <- createDataPartition(y=training$classe, p=0.6, list=FALSE)
+training_train <- training[inTrain,]
+training_test  <- training[-inTrain,]
+dim(training_train); dim(training_test)
+```
+
+### Decision Tree
+
+The next step is to perform a model which give us a first look about structure of the data. We use Decision Tree to predict "classe" variable:
+
+```{r}
+modFit <- train(classe~., method="rpart", data=training_train)
+plot(modFit$finalModel, uniform=TRUE, main="classification Tree")
+text(modFit$finalModel,use.n=TRUE, all=TRUE, cex=0.6)
+modFit
+```
+
+The decision tree predicts the training train data only 50.6%. Then, we predict the value for "classe" variable on training test subdataset and we can see that the accuracy on training test is about 49%:
+
+```{r}
+rpartprediction <- predict(modFit,training_test)
+confusionMatrix(rpartprediction, training_test$classe)
+```
+
+### Random Forest
+
+Random Forest is a technique that can improve our accuracy but it is not as easy to explain as trees. First of all, we use 5 folds cross-validation and then we build our model with this parameter:
+
+```{r}
+fitControl<-trainControl(method="cv", number=5, allowParallel=T, verbose=T)
+rfmod<-train(classe~., data=training_train, method="rf", trControl=fitControl, verbose=F)
+rfmod
+```
+
+Accuracy is 98.6% given that optimal value for mtry is 21. The next step is to predict on our training test subdataset in order to get the accuracy:
+
+```{r}
+rfprediction <- predict(rfmod,training_test)
+confusionMatrix(rfprediction, training_test$classe)
+```
+
+This confusion matrix show us that our predictions are almost perfect because we obtained 98.5%. The diagonal of this matrix reflects our accuracy. Therefore, this model will help us to predict on testing dataset which has 20 observations as follows:
+
+```{r}
+rfpredictiontest <- predict(rfmod,testing)
+rfpredictiontest
+```
+
+Finally, in order to fulfil the submission assignment, we can use the next script to create text files with the outcome of our last predecition and the number of the problem (20 text files in total):
+
+```{r}
+getwd()
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(rfpredictiontest)
+```
+
+## Conclusion
+
+According our results, random forest performed a better solution (the highest accuracy) to predict the quality of an activity.
+
+## References
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
